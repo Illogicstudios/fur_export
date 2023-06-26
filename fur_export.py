@@ -1,6 +1,7 @@
 import hou
 import re
 import os
+import time
 import importlib
 import warnings
 import _alembic_hom_extensions as ahe
@@ -15,14 +16,23 @@ from PySide2.QtGui import *
 from utils import *
 
 
-# Print log in console and also in a file
 def print_log(msg, log_file):
+    """
+    Print log in console and also in a file
+    :param msg
+    :param log_file
+    :return:
+    """
     print(msg)
     log_file.write(msg + "\n")
 
 
-# Choose a list of shots
 def list_shots(current_project_dir):
+    """
+    Choose a list of shots
+    :param current_project_dir
+    :return:
+    """
     file_dialog = QFileDialog()
     file_dialog.setDirectory(current_project_dir)
     file_dialog.setFileMode(QFileDialog.DirectoryOnly)
@@ -37,8 +47,13 @@ def list_shots(current_project_dir):
     return paths
 
 
-# List the abcs contained in the shots
 def list_abcs(shots, char_dict):
+    """
+    List the abcs contained in the shots
+    :param shots
+    :param char_dict
+    :return:
+    """
     abcs = {}
     for shot_path in shots:
         # Check if shot path is valid
@@ -78,8 +93,13 @@ def list_abcs(shots, char_dict):
     return abcs
 
 
-# Create the fur node
 def create_fur(file_path, otl):
+    """
+    Create the fur node
+    :param file_path
+    :param otl
+    :return:
+    """
     obj_context = hou.node('/obj')
     fur = obj_context.createNode(otl)
     # Set the Animated Alembic to the latest character abc
@@ -87,8 +107,14 @@ def create_fur(file_path, otl):
     return fur
 
 
-# Export the fur node
 def export_fur(shot_path, char_name, fur):
+    """
+    Export the fur node
+    :param shot_path
+    :param char_name
+    :param fur
+    :return:
+    """
     char_fur_path = os.path.join(shot_path, "abc_fur", char_name)
     version = 0
     # Find the latest fur version to increment it
@@ -107,8 +133,14 @@ def export_fur(shot_path, char_name, fur):
     return export_path
 
 
-# Set some params
 def set_params(fur, options, abc_path):
+    """
+    Set some params
+    :param fur
+    :param options
+    :param abc_path
+    :return:
+    """
     if "motion_blur" in options:
         fur.parm("motionBlur").set(options["motion_blur"])
     if "samples" in options:
@@ -129,6 +161,14 @@ def set_params(fur, options, abc_path):
 
 
 def run(current_project_dir, char_dict, options, log_file_folder):
+    """
+    Run Fur Export
+    :param current_project_dir
+    :param char_dict
+    :param options
+    :param log_file_folder
+    :return:
+    """
     # Get the next log version
     version = 0
     if not os.path.exists(log_file_folder): os.makedirs(log_file_folder)
@@ -166,6 +206,7 @@ def run(current_project_dir, char_dict, options, log_file_folder):
         ret = QtWidgets.QMessageBox().question(None, '', msg, QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
         # Check if dialog has been confirmed
         if ret != QtWidgets.QMessageBox.Yes:
+            print_log("Export cancelled", log_file)
             return
 
         for shot_path, abcs_data in abcs.items():
@@ -173,16 +214,29 @@ def run(current_project_dir, char_dict, options, log_file_folder):
             print_log(msg, log_file)
             for abc_data in abcs_data:
                 char_name = abc_data[0]
+                fur_version = abc_data[1]
                 abc_path = abc_data[2]
                 otl = abc_data[3]
+                time_log = "Time        : " + time.strftime("%d-%m-%Y %H:%M:%S")
                 # Create the fur Node
                 fur = create_fur(abc_path, otl)
                 # Apply Options to the fur
                 set_params(fur, options, abc_path)
                 # Export the fur
                 print_log("| Exporting " + char_name, log_file)
-                new_export_path = export_fur(shot_path, char_name, fur)
+                new_export_path = export_fur(shot_path, char_name, fur).replace("\\", "/")
                 print_log("|      +---> " + new_export_path, log_file)
+                # Logs
+                log_fur_path = os.path.join(
+                    os.path.dirname(new_export_path), "export_"+time.strftime("%d_%m_%Y")+".log").replace("\\", "/")
+                time_log += " --> " + time.strftime("%H:%M:%S") + "\n"
+                char_log = "Char        : " + char_name + "\n"
+                version_log = "Fur Version : " + str(fur_version) + "\n"
+                abc_path_log = "ABC Path    : " + abc_path + "\n"
+                export_path_log = "Export Path : " + new_export_path + "\n"
+                with open(log_fur_path, "w") as log_fur_file:
+                    log_fur_file.write(time_log + export_path_log + char_log + version_log + abc_path_log)
+
                 # Delete the fur Node
                 fur.destroy()
             print_log("+" + (len(msg) - 1) * "-" + "\n", log_file)
